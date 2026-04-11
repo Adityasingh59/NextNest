@@ -1,0 +1,488 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  STUDENT_SEEKER
+  STUDENT_LISTER
+  LANDLORD
+  ADMIN
+}
+
+enum UniversityVerificationStatus {
+  UNVERIFIED
+  PENDING_EMAIL
+  VERIFIED
+}
+
+enum ManualVerificationStatus {
+  NOT_SUBMITTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum VerificationDocumentType {
+  PASSPORT
+  ENROLLMENT_PROOF
+}
+
+enum ListingState {
+  DRAFT
+  ACTIVE
+  MATCH_PENDING
+  READY_FOR_SIGNATURE
+  COMPLETED
+  ARCHIVED
+}
+
+enum ListingAmenity {
+  WIFI
+  LAUNDRY
+  PARKING
+  GYM
+  PET_FRIENDLY
+  AIR_CONDITIONING
+  ELEVATOR
+  DOORMAN
+  BALCONY
+  DISHWASHER
+}
+
+enum FurnishingStatus {
+  UNFURNISHED
+  PARTIALLY_FURNISHED
+  FULLY_FURNISHED
+}
+
+enum ApplicationStatus {
+  PENDING
+  REJECTED
+  ACCEPTED
+  WITHDRAWN
+}
+
+enum LeaseTransferStatus {
+  AWAITING_LISTER_SELECTION
+  LANDLORD_REVIEW
+  LANDLORD_REJECTED
+  READY_FOR_SIGNATURE
+  OUTGOING_SIGNED
+  INCOMING_SIGNED
+  FULLY_EXECUTED
+  CANCELLED
+}
+
+enum LandlordDecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SignatureProvider {
+  DOCUSIGN
+  HELLOSIGN
+}
+
+enum SignatureEnvelopeStatus {
+  DRAFT
+  SENT
+  OUTGOING_SIGNED
+  INCOMING_SIGNED
+  COMPLETED
+  VOIDED
+  FAILED
+}
+
+enum DocumentKind {
+  PROFILE_PHOTO
+  ORIGINAL_LEASE
+  SIGNED_LEASE
+  PASSPORT
+  ENROLLMENT_PROOF
+  OTHER
+}
+
+enum TransactionStatus {
+  PENDING_PAYMENT
+  HELD_IN_ESCROW
+  RELEASE_SCHEDULED
+  RELEASED
+  DISPUTED
+  REFUNDED
+  CANCELLED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_BUYER
+  RESOLVED_SELLER
+  CLOSED
+}
+
+enum TourSlotStatus {
+  AVAILABLE
+  BOOKED
+  CANCELLED
+}
+
+enum ReviewType {
+  OUTGOING_TO_INCOMING
+  INCOMING_TO_OUTGOING
+  LANDLORD_TO_STUDENT
+  STUDENT_TO_LANDLORD
+}
+
+enum ReviewModerationStatus {
+  CLEAN
+  FLAGGED
+  HIDDEN
+}
+
+model User {
+  id                           String                       @id @default(cuid())
+  email                        String                       @unique
+  emailVerified                DateTime?
+  name                         String?
+  image                        String?
+  bio                          String?                      @db.VarChar(200)
+  universityName               String?
+  graduationYear               Int?
+  roles                        UserRole[]                   @default([STUDENT_SEEKER])
+  universityVerificationStatus UniversityVerificationStatus @default(UNVERIFIED)
+  manualVerificationStatus     ManualVerificationStatus     @default(NOT_SUBMITTED)
+  manualVerificationNotes      String?
+  isEduEmail                   Boolean                      @default(false)
+  isActive                     Boolean                      @default(true)
+  phoneNumber                  String?
+  profilePhotoKey              String?
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
+
+  accounts                     Account[]
+  sessions                     Session[]
+  listings                     Listing[]                    @relation("ListingOwner")
+  applications                 Application[]
+  ownedFurnitureTransactions   EscrowTransaction[]          @relation("FurnitureSeller")
+  boughtFurnitureTransactions  EscrowTransaction[]          @relation("FurnitureBuyer")
+  verificationDocuments        VerificationDocument[]
+  uploadedLeaseDocuments       LeaseDocument[]
+  landlordTransfers            LeaseTransfer[]              @relation("TransferLandlord")
+  outgoingTransfers            LeaseTransfer[]              @relation("TransferOutgoingStudent")
+  incomingTransfers            LeaseTransfer[]              @relation("TransferIncomingStudent")
+  tourSlots                    TourSlot[]                   @relation("TourSlotHost")
+  hostedBookings               TourBooking[]                @relation("TourBookingHost")
+  seekerBookings               TourBooking[]                @relation("TourBookingSeeker")
+  reviewsWritten               Review[]                     @relation("ReviewAuthor")
+  reviewsReceived              Review[]                     @relation("ReviewSubject")
+  disputesOpened               DisputeTicket[]              @relation("DisputeReporter")
+  disputesAssigned             DisputeTicket[]              @relation("DisputeAdmin")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionToken])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Listing {
+  id                      String           @id @default(cuid())
+  ownerId                 String
+  title                   String           @db.VarChar(120)
+  description             String?          @db.VarChar(2000)
+  streetLine1             String
+  streetLine2             String?
+  city                    String
+  stateRegion             String
+  postalCode              String
+  country                 String           @default("USA")
+  campusName              String?
+  neighborhood            String?
+  latitude                Decimal?         @db.Decimal(9, 6)
+  longitude               Decimal?         @db.Decimal(9, 6)
+  monthlyRentCents        Int
+  securityDepositCents    Int?
+  leaseStartDate          DateTime
+  leaseEndDate            DateTime
+  availableFrom           DateTime
+  availableUntil          DateTime?
+  furnishingStatus        FurnishingStatus @default(UNFURNISHED)
+  isFurnished             Boolean          @default(false)
+  bathrooms               Decimal?         @db.Decimal(3, 1)
+  bedrooms                Decimal?         @db.Decimal(3, 1)
+  squareFeet              Int?
+  utilitiesIncluded       Boolean          @default(false)
+  petsAllowed             Boolean          @default(false)
+  amenities               ListingAmenity[]
+  state                   ListingState     @default(DRAFT)
+  landlordName            String?
+  landlordEmail           String?
+  landlordPhoneNumber     String?
+  draftSavedAt            DateTime?
+  publishedAt             DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  owner                   User             @relation("ListingOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  documents               LeaseDocument[]
+  furnitureItems          FurnitureItem[]
+  applications            Application[]
+  transfer                LeaseTransfer?
+  tourSlots               TourSlot[]
+
+  @@index([state, availableFrom])
+  @@index([city, stateRegion])
+  @@index([monthlyRentCents])
+  @@index([ownerId])
+}
+
+model LeaseDocument {
+  id                String       @id @default(cuid())
+  listingId         String?
+  uploadedById      String?
+  kind              DocumentKind
+  fileName          String
+  fileKey           String       @unique
+  mimeType          String
+  fileSizeBytes     Int
+  providerUrl       String?
+  uploadedAt        DateTime     @default(now())
+
+  listing           Listing?     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  uploadedBy        User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  signatureEnvelope SignatureEnvelope?
+}
+
+model VerificationDocument {
+  id               String                   @id @default(cuid())
+  userId           String
+  type             VerificationDocumentType
+  fileName         String
+  fileKey          String                   @unique
+  mimeType         String
+  fileSizeBytes    Int
+  reviewedByAdmin  String?
+  reviewNotes      String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                 @default(now())
+
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FurnitureItem {
+  id                    String            @id @default(cuid())
+  listingId             String
+  name                  String            @db.VarChar(120)
+  description           String?           @db.VarChar(500)
+  askingPriceCents      Int?
+  quantity              Int               @default(1)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  listing               Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  escrowTransactions    EscrowTransaction[]
+}
+
+model Application {
+  id                 String            @id @default(cuid())
+  listingId          String
+  seekerId           String
+  introMessage       String            @db.VarChar(300)
+  status             ApplicationStatus @default(PENDING)
+  rejectedReason     String?
+  acceptedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  listing            Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  seeker             User              @relation(fields: [seekerId], references: [id], onDelete: Cascade)
+  transfer           LeaseTransfer?
+
+  @@unique([listingId, seekerId])
+  @@index([status])
+}
+
+model LeaseTransfer {
+  id                      String                 @id @default(cuid())
+  listingId               String                 @unique
+  applicationId           String                 @unique
+  outgoingStudentId       String
+  incomingStudentId       String
+  landlordId              String?
+  status                  LeaseTransferStatus    @default(AWAITING_LISTER_SELECTION)
+  landlordDecisionStatus  LandlordDecisionStatus @default(PENDING)
+  landlordDecisionReason  String?
+  landlordPortalToken     String?                @unique
+  landlordDecisionAt      DateTime?
+  readyForSignatureAt     DateTime?
+  fullyExecutedAt         DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  listing                 Listing                @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  application             Application            @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  outgoingStudent         User                   @relation("TransferOutgoingStudent", fields: [outgoingStudentId], references: [id], onDelete: Restrict)
+  incomingStudent         User                   @relation("TransferIncomingStudent", fields: [incomingStudentId], references: [id], onDelete: Restrict)
+  landlord                User?                  @relation("TransferLandlord", fields: [landlordId], references: [id], onDelete: SetNull)
+  signatureEnvelope       SignatureEnvelope?
+  escrowTransactions      EscrowTransaction[]
+  reviews                 Review[]
+
+  @@index([status])
+  @@index([landlordDecisionStatus])
+}
+
+model SignatureEnvelope {
+  id                    String                  @id @default(cuid())
+  transferId            String                  @unique
+  signedLeaseDocumentId String?                 @unique
+  provider              SignatureProvider
+  providerEnvelopeId    String                  @unique
+  status                SignatureEnvelopeStatus @default(DRAFT)
+  sentAt                DateTime?
+  outgoingSignedAt      DateTime?
+  incomingSignedAt      DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  transfer              LeaseTransfer           @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  signedLeaseDocument    LeaseDocument?         @relation(fields: [signedLeaseDocumentId], references: [id], onDelete: SetNull)
+}
+
+model EscrowTransaction {
+  id                         String            @id @default(cuid())
+  transferId                 String?
+  furnitureItemId            String
+  sellerId                   String
+  buyerId                    String
+  status                     TransactionStatus @default(PENDING_PAYMENT)
+  amountCents                Int
+  paymentProvider            String
+  providerPaymentIntentId    String?           @unique
+  providerTransferId         String?           @unique
+  holdPlacedAt               DateTime?
+  releaseEligibleAt          DateTime?
+  releasedAt                 DateTime?
+  disputedAt                 DateTime?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+
+  transfer                   LeaseTransfer?    @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  furnitureItem              FurnitureItem     @relation(fields: [furnitureItemId], references: [id], onDelete: Restrict)
+  seller                     User              @relation("FurnitureSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  buyer                      User              @relation("FurnitureBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  dispute                    DisputeTicket?
+
+  @@index([status])
+  @@index([releaseEligibleAt])
+}
+
+model DisputeTicket {
+  id                     String         @id @default(cuid())
+  escrowTransactionId    String         @unique
+  reportedById           String
+  assignedAdminId        String?
+  status                 DisputeStatus  @default(OPEN)
+  reason                 String         @db.VarChar(500)
+  resolutionNotes        String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  resolvedAt             DateTime?
+
+  escrowTransaction      EscrowTransaction @relation(fields: [escrowTransactionId], references: [id], onDelete: Cascade)
+  reportedBy            User              @relation("DisputeReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+  assignedAdmin         User?             @relation("DisputeAdmin", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+}
+
+model TourSlot {
+  id                     String         @id @default(cuid())
+  listingId              String
+  hostId                 String
+  googleCalendarEventId  String?
+  startsAt               DateTime
+  endsAt                 DateTime
+  status                 TourSlotStatus @default(AVAILABLE)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  listing                Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  host                   User           @relation("TourSlotHost", fields: [hostId], references: [id], onDelete: Cascade)
+  booking                TourBooking?
+
+  @@index([listingId, startsAt])
+}
+
+model TourBooking {
+  id                     String    @id @default(cuid())
+  slotId                 String    @unique
+  hostId                 String
+  seekerId               String
+  googleCalendarEventId  String?   @unique
+  googleMeetUrl          String?
+  notes                  String?   @db.VarChar(500)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  slot                   TourSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  host                   User      @relation("TourBookingHost", fields: [hostId], references: [id], onDelete: Cascade)
+  seeker                 User      @relation("TourBookingSeeker", fields: [seekerId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id                  String                 @id @default(cuid())
+  authorId            String
+  subjectId           String
+  transferId          String?
+  type                ReviewType
+  rating              Int
+  body                String                 @db.VarChar(1000)
+  moderationStatus    ReviewModerationStatus @default(CLEAN)
+  moderationReason    String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  author              User                   @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subject             User                   @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  transfer            LeaseTransfer?         @relation(fields: [transferId], references: [id], onDelete: SetNull)
+
+  @@index([subjectId, createdAt])
+}

@@ -1,0 +1,11 @@
+.next
+node_modules
+.env
+.env.local
+coverage
+dist
+*.log
+pnpm-lock.yaml
+yarn.lock
+prisma/dev.db
+tsconfig.tsbuildinfo
