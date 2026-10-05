@@ -27,7 +27,7 @@ export function LoginForm() {
         </p>
         {sent.devLink ? (
           <p className="rounded-md bg-sky-soft px-3 py-2 text-body-sm text-sky">
-            Dev mode (no email provider configured):{" "}
+            Demo mode (no email provider configured):{" "}
             <a className="font-medium underline" href={sent.devLink}>
               open the sign-in link
             </a>

@@ -43,8 +43,11 @@ export async function POST(request: Request) {
     html: `<p>Confirm your ${market.universityName} email to sign in to NextNest.</p><p><a href="${link}">Sign in to NextNest</a></p><p>This link expires in 24 hours and works once. If you did not request it, ignore this email.</p>`
   });
 
-  // Local development without an email provider: hand the link back so the flow is testable.
-  const devLink = !delivered && process.env.NODE_ENV !== "production" ? link : undefined;
+  // Without an email provider, hand the link back so the flow is testable: always in local
+  // development, and on a deployment only when DEMO_SHOW_SIGNIN_LINK=true. That flag lets anyone
+  // sign in as any supported .edu address, so use it only on protected preview/demo deployments.
+  const showLink = process.env.NODE_ENV !== "production" || process.env.DEMO_SHOW_SIGNIN_LINK === "true";
+  const devLink = !delivered && showLink ? link : undefined;
 
   return NextResponse.json({ ok: true, university: market.universityName, devLink });
 }

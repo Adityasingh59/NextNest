@@ -78,6 +78,17 @@ Add your email to `ADMIN_EMAILS` to see the review queue and analytics.
 
 Checks: `npm test` (fit score + scam detection), `npm run lint`, `npm run typecheck`, `npm run build`.
 
+## Deploying to Vercel
+
+1. Import the GitHub repo in Vercel (framework: Next.js; the `vercel-build` script is picked up automatically).
+2. In the project's **Storage** tab, create a **Neon** Postgres database and connect it to all environments.
+   This injects `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+3. Add environment variables: `AUTH_SECRET` (a long random string) and optionally `ADMIN_EMAILS`, `RESEND_API_KEY`,
+   `ANTHROPIC_API_KEY`. Without `RESEND_API_KEY`, set `DEMO_SHOW_SIGNIN_LINK=true` so the sign-in link appears on
+   the page. Anyone can then sign in as any supported .edu address, so keep it to protected demo deployments.
+4. Redeploy. Each build runs `prisma migrate deploy` and the idempotent seed before `next build`
+   (see `scripts/vercel-build.sh`).
+
 ## Things to know
 
 - **Market average rents** in `src/lib/markets.ts` are starting estimates. The scam price rule compares against

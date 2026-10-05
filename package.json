@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "bash scripts/vercel-build.sh",
     "start": "next start",
     "lint": "eslint src prisma",
     "test": "vitest run",
@@ -12,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
