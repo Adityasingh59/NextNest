@@ -1,61 +1,57 @@
 import Link from "next/link";
-import { LogoutButton } from "@/components/logout-button";
-import { getSessionFromCookies } from "@/lib/auth-server";
-
-const navItems = [
-  { href: "/", label: "Overview" },
-  { href: "/listings", label: "Discover" },
-  { href: "/listings/new", label: "Create Listing" },
-  { href: "/profile", label: "Profile" },
-  { href: "/workflow", label: "Workflow" }
-];
+import { LogoutButton } from "@/components/client/logout-button";
+import { getCurrentUser, isAdmin } from "@/lib/session";
 
 export async function SiteHeader() {
-  const session = await getSessionFromCookies();
+  const user = await getCurrentUser();
+
+  const nav = user
+    ? [
+        { href: "/dashboard", label: "Dashboard" },
+        { href: "/preferences", label: "Preferences" },
+        { href: "/listings/new", label: "List a room" },
+        ...(isAdmin(user)
+          ? [
+              { href: "/admin/review", label: "Review" },
+              { href: "/analytics", label: "Analytics" }
+            ]
+          : [])
+      ]
+    : [];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[hsl(var(--border))] bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[hsl(var(--primary))] text-sm font-bold text-white">
+    <header className="sticky top-0 z-40 border-b border-line bg-surface-raised/95 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2">
+          <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-md bg-nest text-body-sm font-bold text-on-nest">
             NN
-          </div>
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[hsl(var(--primary))]">
-              NextNest
-            </p>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              Verified student lease marketplace
-            </p>
-          </div>
+          </span>
+          <span className="text-heading-sm text-ink">NextNest</span>
         </Link>
-
-        {session ? (
-          <div className="hidden items-center gap-5 md:flex">
-            <nav className="flex items-center gap-6 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              {navItems.map((item) => (
-                <Link key={item.href} href={item.href} className="transition hover:text-[hsl(var(--foreground))]">
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{session.displayName}</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">{session.email}</p>
-              </div>
-              <LogoutButton />
-            </div>
+        {user ? (
+          <div className="flex items-center gap-3">
+            <span className="hidden text-body-sm text-ink-muted sm:inline">{user.market?.name}</span>
+            <LogoutButton />
           </div>
         ) : (
-          <Link
-            href="/login"
-            className="rounded-full bg-[hsl(var(--primary))] px-4 py-2 text-sm font-semibold text-white"
-          >
-            Login
+          <Link href="/login" className="nn-btn nn-btn-sm nn-btn-primary">
+            Sign in
           </Link>
         )}
       </div>
+      {nav.length > 0 ? (
+        <nav aria-label="Main" className="mx-auto max-w-6xl overflow-x-auto px-4 sm:px-6">
+          <ul className="flex gap-1 pb-2">
+            {nav.map((item) => (
+              <li key={item.href}>
+                <Link href={item.href} className="block whitespace-nowrap rounded-md px-3 py-2 text-body-sm font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink">
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
     </header>
   );
 }

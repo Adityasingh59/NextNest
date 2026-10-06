@@ -1,84 +1,53 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  PENDING_LOGIN_COOKIE,
-  SESSION_COOKIE,
-  createSessionCookie,
-  encodePendingLoginPayload,
-  readPendingLogin
-} from "@/lib/auth";
+import { z } from "zod";
+import { jsonError } from "@/lib/api";
+import { sendEmail } from "@/lib/email";
+import { issueLoginToken } from "@/lib/login-tokens";
+import { domainMatches, emailDomain } from "@/lib/markets";
+import { prisma } from "@/lib/prisma";
 
+const bodySchema = z.object({ email: z.string().trim().toLowerCase().email() });
+
+/** POST /api/auth/verify: send a .edu verification (magic) link. */
 export async function POST(request: Request) {
-  const { code, idSuffix } = (await request.json()) as {
-    code?: string;
-    idSuffix?: string;
-  };
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
 
-  const normalizedCode = String(code ?? "").trim();
-  const normalizedIdSuffix = String(idSuffix ?? "").trim();
-  const cookieStore = await cookies();
-  const pending = await readPendingLogin(cookieStore.get(PENDING_LOGIN_COOKIE)?.value);
+  if (!parsed.success) {
+    return jsonError("Enter a valid email address.");
+  }
 
-  if (!pending) {
-    return NextResponse.json(
-      { error: "Your secure login window expired. Start again from the login page." },
-      { status: 401 }
+  const { email } = parsed.data;
+  const domain = emailDomain(email);
+
+  if (!domain.endsWith(".edu")) {
+    return jsonError("NextNest is for students. Use your university .edu email.");
+  }
+
+  const markets = await prisma.market.findMany({ where: { isActive: true } });
+  const market = markets.find((candidate) => domainMatches(domain, candidate.emailDomains));
+
+  if (!market) {
+    return jsonError(
+      `NextNest is live at ${markets.map((m) => m.universityName).join(", ")}. Your university is not supported yet.`
     );
   }
 
-  if (!/^\d{6}$/.test(normalizedCode)) {
-    return NextResponse.json({ error: "Enter the six-digit verification code." }, { status: 400 });
-  }
+  const token = await issueLoginToken(email);
+  const origin = process.env.AUTH_URL || new URL(request.url).origin;
+  const link = `${origin}/api/auth/callback?token=${encodeURIComponent(token)}`;
 
-  if (!/^\d{4}$/.test(normalizedIdSuffix)) {
-    return NextResponse.json({ error: "Enter the last four digits of your student or employee ID." }, { status: 400 });
-  }
-
-  if (normalizedCode !== pending.verificationCode || normalizedIdSuffix !== pending.idSuffix) {
-    const attemptsRemaining = pending.attemptsRemaining - 1;
-
-    if (attemptsRemaining <= 0) {
-      cookieStore.delete(PENDING_LOGIN_COOKIE);
-      return NextResponse.json(
-        { error: "Too many failed attempts. Start the login process again." },
-        { status: 401 }
-      );
-    }
-
-    cookieStore.set(
-      PENDING_LOGIN_COOKIE,
-      await encodePendingLoginPayload({
-        ...pending,
-        attemptsRemaining
-      }),
-      {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 15 * 60
-      }
-    );
-
-    return NextResponse.json({ error: "Verification code or ID suffix is incorrect." }, { status: 401 });
-  }
-
-  const sessionToken = await createSessionCookie({
-    email: pending.email,
-    displayName: pending.displayName,
-    role: pending.role,
-    university: pending.university,
-    badge: pending.badge
+  const { delivered } = await sendEmail({
+    to: email,
+    subject: "Your NextNest sign-in link",
+    text: `Confirm your ${market.universityName} email to sign in to NextNest:\n\n${link}\n\nThis link expires in 24 hours and works once. If you did not request it, ignore this email.`,
+    html: `<p>Confirm your ${market.universityName} email to sign in to NextNest.</p><p><a href="${link}">Sign in to NextNest</a></p><p>This link expires in 24 hours and works once. If you did not request it, ignore this email.</p>`
   });
 
-  cookieStore.set(SESSION_COOKIE, sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 12 * 24 * 60 * 60
-  });
-  cookieStore.delete(PENDING_LOGIN_COOKIE);
+  // Without an email provider, hand the link back so the flow is testable: always in local
+  // development, and on a deployment only when DEMO_SHOW_SIGNIN_LINK=true. That flag lets anyone
+  // sign in as any supported .edu address, so use it only on protected preview/demo deployments.
+  const showLink = process.env.NODE_ENV !== "production" || process.env.DEMO_SHOW_SIGNIN_LINK === "true";
+  const devLink = !delivered && showLink ? link : undefined;
 
-  return NextResponse.json({ ok: true, redirectTo: "/" });
+  return NextResponse.json({ ok: true, university: market.universityName, devLink });
 }

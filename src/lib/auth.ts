@@ -1,84 +1,26 @@
+/**
+ * Signed session cookie. Edge-safe (Web Crypto only) so middleware can
+ * verify it; the user record itself is loaded from the database by
+ * `getCurrentUser` in `session.ts`.
+ */
+
 export const SESSION_COOKIE = "nextnest_session";
-export const PENDING_LOGIN_COOKIE = "nextnest_pending_login";
+export const SESSION_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
-type UserRole = "STUDENT" | "LANDLORD" | "ADMIN";
-type VerificationBadge = "Verified Student" | "ID Verified";
-
-export type SessionUser = {
-  email: string;
-  displayName: string;
-  role: UserRole;
-  university: string;
-  badge: VerificationBadge;
-};
-
-type StoredSession = SessionUser & {
+export type SessionPayload = {
+  userId: string;
   issuedAt: number;
   expiresAt: number;
 };
 
-export type PendingLogin = {
-  email: string;
-  displayName: string;
-  role: UserRole;
-  university: string;
-  badge: VerificationBadge;
-  verificationCode: string;
-  idSuffix: string;
-  createdAt: number;
-  attemptsRemaining: number;
-};
-
-export type ApprovedAccount = {
-  email: string;
-  password: string;
-  displayName: string;
-  role: UserRole;
-  university: string;
-  badge: VerificationBadge;
-  verificationCode: string;
-  idSuffix: string;
-};
-
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const PENDING_WINDOW_MS = 15 * 60 * 1000;
-const SESSION_WINDOW_MS = 12 * ONE_DAY_MS;
-
-const approvedAccounts: ApprovedAccount[] = [
-  {
-    email: "lena@columbia.edu",
-    password: "NestSecure!2026",
-    displayName: "Lena Alvarez",
-    role: "STUDENT",
-    university: "Columbia University",
-    badge: "Verified Student",
-    verificationCode: "246810",
-    idSuffix: "4821"
-  },
-  {
-    email: "omar@nyu.edu",
-    password: "HousingFlow#2026",
-    displayName: "Omar Rahman",
-    role: "STUDENT",
-    university: "New York University",
-    badge: "Verified Student",
-    verificationCode: "514278",
-    idSuffix: "1550"
-  },
-  {
-    email: "leasing@westharborpm.com",
-    password: "LandlordGate!2026",
-    displayName: "West Harbor Leasing",
-    role: "LANDLORD",
-    university: "Partner Landlord",
-    badge: "ID Verified",
-    verificationCode: "775544",
-    idSuffix: "9004"
-  }
-];
-
 function getAuthSecret() {
-  return process.env.AUTH_SECRET || "nextnest-dev-only-secret-change-me";
+  const secret = process.env.AUTH_SECRET;
+
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET must be set in production.");
+  }
+
+  return secret || "nextnest-dev-only-secret-change-me";
 }
 
 function base64UrlEncode(input: Uint8Array) {
@@ -104,27 +46,26 @@ function base64UrlDecode(input: string) {
   return bytes;
 }
 
-async function signValue(value: string) {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
+async function getKey() {
+  return crypto.subtle.importKey(
     "raw",
-    encoder.encode(getAuthSecret()),
+    new TextEncoder().encode(getAuthSecret()),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign", "verify"]
   );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
-  return base64UrlEncode(new Uint8Array(signature));
 }
 
-async function encodeSignedPayload(payload: Record<string, unknown>) {
-  const encoder = new TextEncoder();
-  const body = base64UrlEncode(encoder.encode(JSON.stringify(payload)));
-  const signature = await signValue(body);
-  return `${body}.${signature}`;
+export async function createSessionToken(userId: string) {
+  const now = Date.now();
+  const payload: SessionPayload = { userId, issuedAt: now, expiresAt: now + SESSION_WINDOW_MS };
+  const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const signature = await crypto.subtle.sign("HMAC", await getKey(), new TextEncoder().encode(body));
+
+  return `${body}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
-async function decodeSignedPayload<T>(token?: string | null): Promise<T | null> {
+export async function readSessionToken(token?: string | null): Promise<SessionPayload | null> {
   if (!token) {
     return null;
   }
@@ -135,101 +76,30 @@ async function decodeSignedPayload<T>(token?: string | null): Promise<T | null> 
     return null;
   }
 
-  const expectedSignature = await signValue(body);
-
-  if (signature !== expectedSignature) {
-    return null;
-  }
-
-  const decoder = new TextDecoder();
-  const decodedBody = decoder.decode(base64UrlDecode(body));
-
   try {
-    return JSON.parse(decodedBody) as T;
+    // crypto.subtle.verify compares in constant time.
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      await getKey(),
+      base64UrlDecode(signature),
+      new TextEncoder().encode(body)
+    );
+
+    if (!valid) {
+      return null;
+    }
+
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(body))) as SessionPayload;
+    return payload.expiresAt > Date.now() ? payload : null;
   } catch {
     return null;
   }
 }
 
-export function getApprovedAccounts() {
-  return approvedAccounts;
-}
-
-export function findApprovedAccount(email: string) {
-  return approvedAccounts.find((account) => account.email === email.toLowerCase());
-}
-
-export function isStrictPassword(value: string) {
-  return (
-    value.length >= 12 &&
-    /[a-z]/.test(value) &&
-    /[A-Z]/.test(value) &&
-    /\d/.test(value) &&
-    /[^A-Za-z0-9]/.test(value) &&
-    !/\s/.test(value)
-  );
-}
-
-export function isAllowedEmail(email: string) {
-  return email.endsWith(".edu") || Boolean(findApprovedAccount(email));
-}
-
-export async function createPendingLoginCookie(account: ApprovedAccount) {
-  return encodePendingLoginPayload({
-    email: account.email,
-    displayName: account.displayName,
-    role: account.role,
-    university: account.university,
-    badge: account.badge,
-    verificationCode: account.verificationCode,
-    idSuffix: account.idSuffix,
-    createdAt: Date.now(),
-    attemptsRemaining: 5
-  });
-}
-
-export async function encodePendingLoginPayload(payload: PendingLogin) {
-  return encodeSignedPayload(payload);
-}
-
-export async function readPendingLogin(token?: string | null) {
-  const pending = await decodeSignedPayload<PendingLogin>(token);
-
-  if (!pending) {
-    return null;
-  }
-
-  if (Date.now() - pending.createdAt > PENDING_WINDOW_MS) {
-    return null;
-  }
-
-  if (pending.attemptsRemaining <= 0) {
-    return null;
-  }
-
-  return pending;
-}
-
-export async function createSessionCookie(user: SessionUser) {
-  const payload: StoredSession = {
-    ...user,
-    issuedAt: Date.now(),
-    expiresAt: Date.now() + SESSION_WINDOW_MS
-  };
-
-  return encodeSignedPayload(payload);
-}
-
-export async function readSessionToken(token?: string | null) {
-  const session = await decodeSignedPayload<StoredSession>(token);
-
-  if (!session) {
-    return null;
-  }
-
-  if (session.expiresAt < Date.now()) {
-    return null;
-  }
-
-  return session;
-}
+export const sessionCookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: SESSION_WINDOW_MS / 1000
+};

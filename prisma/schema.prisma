@@ -35,11 +35,39 @@ enum VerificationDocumentType {
 
 enum ListingState {
   DRAFT
+  SCREENING
+  UNDER_REVIEW
   ACTIVE
-  MATCH_PENDING
-  READY_FOR_SIGNATURE
-  COMPLETED
+  MATCHED
+  TRANSFERRED
+  REJECTED
   ARCHIVED
+}
+
+enum RoomType {
+  PRIVATE_ROOM
+  SHARED_ROOM
+  STUDIO
+  ENTIRE_APARTMENT
+}
+
+enum MatchStatus {
+  REQUESTED
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+  TRANSFERRED
+}
+
+enum ScamDecision {
+  APPROVED
+  HELD_FOR_REVIEW
+}
+
+enum ReviewOutcome {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum ListingAmenity {
@@ -59,13 +87,6 @@ enum FurnishingStatus {
   UNFURNISHED
   PARTIALLY_FURNISHED
   FULLY_FURNISHED
-}
-
-enum ApplicationStatus {
-  PENDING
-  REJECTED
-  ACCEPTED
-  WITHDRAWN
 }
 
 enum LeaseTransferStatus {
@@ -163,27 +184,32 @@ model User {
   isActive                     Boolean                      @default(true)
   phoneNumber                  String?
   profilePhotoKey              String?
+  marketId                     String?
+  experimentGroups             Json                         @default("{}")
   createdAt                    DateTime                     @default(now())
   updatedAt                    DateTime                     @updatedAt
 
-  accounts                     Account[]
-  sessions                     Session[]
-  listings                     Listing[]                    @relation("ListingOwner")
-  applications                 Application[]
-  ownedFurnitureTransactions   EscrowTransaction[]          @relation("FurnitureSeller")
-  boughtFurnitureTransactions  EscrowTransaction[]          @relation("FurnitureBuyer")
-  verificationDocuments        VerificationDocument[]
-  uploadedLeaseDocuments       LeaseDocument[]
-  landlordTransfers            LeaseTransfer[]              @relation("TransferLandlord")
-  outgoingTransfers            LeaseTransfer[]              @relation("TransferOutgoingStudent")
-  incomingTransfers            LeaseTransfer[]              @relation("TransferIncomingStudent")
-  tourSlots                    TourSlot[]                   @relation("TourSlotHost")
-  hostedBookings               TourBooking[]                @relation("TourBookingHost")
-  seekerBookings               TourBooking[]                @relation("TourBookingSeeker")
-  reviewsWritten               Review[]                     @relation("ReviewAuthor")
-  reviewsReceived              Review[]                     @relation("ReviewSubject")
-  disputesOpened               DisputeTicket[]              @relation("DisputeReporter")
-  disputesAssigned             DisputeTicket[]              @relation("DisputeAdmin")
+  market     Market?            @relation(fields: [marketId], references: [id], onDelete: SetNull)
+  preference PreferenceProfile?
+  events     Event[]
+
+  accounts                    Account[]
+  sessions                    Session[]
+  listings                    Listing[]              @relation("ListingOwner")
+  ownedFurnitureTransactions  EscrowTransaction[]    @relation("FurnitureSeller")
+  boughtFurnitureTransactions EscrowTransaction[]    @relation("FurnitureBuyer")
+  verificationDocuments       VerificationDocument[]
+  uploadedLeaseDocuments      LeaseDocument[]
+  landlordTransfers           LeaseTransfer[]        @relation("TransferLandlord")
+  outgoingTransfers           LeaseTransfer[]        @relation("TransferOutgoingStudent")
+  incomingTransfers           LeaseTransfer[]        @relation("TransferIncomingStudent")
+  tourSlots                   TourSlot[]             @relation("TourSlotHost")
+  hostedBookings              TourBooking[]          @relation("TourBookingHost")
+  seekerBookings              TourBooking[]          @relation("TourBookingSeeker")
+  reviewsWritten              Review[]               @relation("ReviewAuthor")
+  reviewsReceived             Review[]               @relation("ReviewSubject")
+  disputesOpened              DisputeTicket[]        @relation("DisputeReporter")
+  disputesAssigned            DisputeTicket[]        @relation("DisputeAdmin")
 }
 
 model Account {
@@ -223,51 +249,62 @@ model VerificationToken {
 }
 
 model Listing {
-  id                      String           @id @default(cuid())
-  ownerId                 String
-  title                   String           @db.VarChar(120)
-  description             String?          @db.VarChar(2000)
-  streetLine1             String
-  streetLine2             String?
-  city                    String
-  stateRegion             String
-  postalCode              String
-  country                 String           @default("USA")
-  campusName              String?
-  neighborhood            String?
-  latitude                Decimal?         @db.Decimal(9, 6)
-  longitude               Decimal?         @db.Decimal(9, 6)
-  monthlyRentCents        Int
-  securityDepositCents    Int?
-  leaseStartDate          DateTime
-  leaseEndDate            DateTime
-  availableFrom           DateTime
-  availableUntil          DateTime?
-  furnishingStatus        FurnishingStatus @default(UNFURNISHED)
-  isFurnished             Boolean          @default(false)
-  bathrooms               Decimal?         @db.Decimal(3, 1)
-  bedrooms                Decimal?         @db.Decimal(3, 1)
-  squareFeet              Int?
-  utilitiesIncluded       Boolean          @default(false)
-  petsAllowed             Boolean          @default(false)
-  amenities               ListingAmenity[]
-  state                   ListingState     @default(DRAFT)
-  landlordName            String?
-  landlordEmail           String?
-  landlordPhoneNumber     String?
-  draftSavedAt            DateTime?
-  publishedAt             DateTime?
-  completedAt             DateTime?
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  ownerId              String
+  marketId             String
+  title                String           @db.VarChar(120)
+  description          String?          @db.VarChar(2000)
+  streetLine1          String
+  streetLine2          String?
+  city                 String
+  stateRegion          String
+  postalCode           String
+  country              String           @default("USA")
+  campusName           String?
+  neighborhood         String?
+  latitude             Decimal?         @db.Decimal(9, 6)
+  longitude            Decimal?         @db.Decimal(9, 6)
+  monthlyRentCents     Int
+  securityDepositCents Int?
+  leaseStartDate       DateTime
+  leaseEndDate         DateTime
+  availableFrom        DateTime
+  availableUntil       DateTime?
+  furnishingStatus     FurnishingStatus @default(UNFURNISHED)
+  isFurnished          Boolean          @default(false)
+  bathrooms            Decimal?         @db.Decimal(3, 1)
+  bedrooms             Decimal?         @db.Decimal(3, 1)
+  squareFeet           Int?
+  utilitiesIncluded    Boolean          @default(false)
+  petsAllowed          Boolean          @default(false)
+  amenities            ListingAmenity[]
+  roomType             RoomType         @default(PRIVATE_ROOM)
+  lifestyleTags        String[]
+  photoUrls            String[]
+  state                ListingState     @default(DRAFT)
+  scamScore            Int?
+  scamFlagged          Boolean          @default(false)
+  isSample             Boolean          @default(false)
+  appealNote           String?          @db.VarChar(1000)
+  landlordName         String?
+  landlordEmail        String?
+  landlordPhoneNumber  String?
+  draftSavedAt         DateTime?
+  publishedAt          DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
-  owner                   User             @relation("ListingOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  documents               LeaseDocument[]
-  furnitureItems          FurnitureItem[]
-  applications            Application[]
-  transfer                LeaseTransfer?
-  tourSlots               TourSlot[]
+  owner          User            @relation("ListingOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  market         Market          @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  documents      LeaseDocument[]
+  furnitureItems FurnitureItem[]
+  matches        Match[]
+  scamChecks     ScamCheck[]
+  transfer       LeaseTransfer?
+  tourSlots      TourSlot[]
 
+  @@index([marketId, state])
   @@index([state, availableFrom])
   @@index([city, stateRegion])
   @@index([monthlyRentCents])
@@ -275,96 +312,103 @@ model Listing {
 }
 
 model LeaseDocument {
-  id                String       @id @default(cuid())
-  listingId         String?
-  uploadedById      String?
-  kind              DocumentKind
-  fileName          String
-  fileKey           String       @unique
-  mimeType          String
-  fileSizeBytes     Int
-  providerUrl       String?
-  uploadedAt        DateTime     @default(now())
+  id            String       @id @default(cuid())
+  listingId     String?
+  uploadedById  String?
+  kind          DocumentKind
+  fileName      String
+  fileKey       String       @unique
+  mimeType      String
+  fileSizeBytes Int
+  providerUrl   String?
+  uploadedAt    DateTime     @default(now())
 
-  listing           Listing?     @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  uploadedBy        User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  listing           Listing?           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  uploadedBy        User?              @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   signatureEnvelope SignatureEnvelope?
 }
 
 model VerificationDocument {
-  id               String                   @id @default(cuid())
-  userId           String
-  type             VerificationDocumentType
-  fileName         String
-  fileKey          String                   @unique
-  mimeType         String
-  fileSizeBytes    Int
-  reviewedByAdmin  String?
-  reviewNotes      String?
-  reviewedAt       DateTime?
-  createdAt        DateTime                 @default(now())
+  id              String                   @id @default(cuid())
+  userId          String
+  type            VerificationDocumentType
+  fileName        String
+  fileKey         String                   @unique
+  mimeType        String
+  fileSizeBytes   Int
+  reviewedByAdmin String?
+  reviewNotes     String?
+  reviewedAt      DateTime?
+  createdAt       DateTime                 @default(now())
 
-  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model FurnitureItem {
-  id                    String            @id @default(cuid())
-  listingId             String
-  name                  String            @db.VarChar(120)
-  description           String?           @db.VarChar(500)
-  askingPriceCents      Int?
-  quantity              Int               @default(1)
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  id               String   @id @default(cuid())
+  listingId        String
+  name             String   @db.VarChar(120)
+  description      String?  @db.VarChar(500)
+  askingPriceCents Int?
+  quantity         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  listing               Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  escrowTransactions    EscrowTransaction[]
+  listing            Listing             @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  escrowTransactions EscrowTransaction[]
 }
 
-model Application {
-  id                 String            @id @default(cuid())
-  listingId          String
-  seekerId           String
-  introMessage       String            @db.VarChar(300)
-  status             ApplicationStatus @default(PENDING)
-  rejectedReason     String?
-  acceptedAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+model Match {
+  id            String      @id @default(cuid())
+  listingId     String
+  preferenceId  String
+  fitScore      Int
+  fitBreakdown  Json
+  status        MatchStatus @default(REQUESTED)
+  introMessage  String?     @db.VarChar(300)
+  declineReason String?     @db.VarChar(300)
+  requestedAt   DateTime    @default(now())
+  respondedAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  listing            Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  seeker             User              @relation(fields: [seekerId], references: [id], onDelete: Cascade)
-  transfer           LeaseTransfer?
+  listing    Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  preference PreferenceProfile @relation(fields: [preferenceId], references: [id], onDelete: Cascade)
+  transfer   LeaseTransfer?
 
-  @@unique([listingId, seekerId])
+  @@unique([listingId, preferenceId])
   @@index([status])
 }
 
 model LeaseTransfer {
-  id                      String                 @id @default(cuid())
-  listingId               String                 @unique
-  applicationId           String                 @unique
-  outgoingStudentId       String
-  incomingStudentId       String
-  landlordId              String?
-  status                  LeaseTransferStatus    @default(AWAITING_LISTER_SELECTION)
-  landlordDecisionStatus  LandlordDecisionStatus @default(PENDING)
-  landlordDecisionReason  String?
-  landlordPortalToken     String?                @unique
-  landlordDecisionAt      DateTime?
-  readyForSignatureAt     DateTime?
-  fullyExecutedAt         DateTime?
-  createdAt               DateTime               @default(now())
-  updatedAt               DateTime               @updatedAt
+  id                     String                 @id @default(cuid())
+  listingId              String                 @unique
+  matchId                String                 @unique
+  outgoingStudentId      String
+  incomingStudentId      String
+  landlordId             String?
+  status                 LeaseTransferStatus    @default(AWAITING_LISTER_SELECTION)
+  landlordDecisionStatus LandlordDecisionStatus @default(PENDING)
+  landlordDecisionReason String?
+  landlordPortalToken    String?                @unique
+  landlordDecisionAt     DateTime?
+  readyForSignatureAt    DateTime?
+  outgoingSignatureName  String?
+  outgoingSignedAt       DateTime?
+  incomingSignatureName  String?
+  incomingSignedAt       DateTime?
+  fullyExecutedAt        DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
 
-  listing                 Listing                @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  application             Application            @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  outgoingStudent         User                   @relation("TransferOutgoingStudent", fields: [outgoingStudentId], references: [id], onDelete: Restrict)
-  incomingStudent         User                   @relation("TransferIncomingStudent", fields: [incomingStudentId], references: [id], onDelete: Restrict)
-  landlord                User?                  @relation("TransferLandlord", fields: [landlordId], references: [id], onDelete: SetNull)
-  signatureEnvelope       SignatureEnvelope?
-  escrowTransactions      EscrowTransaction[]
-  reviews                 Review[]
+  listing            Listing             @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  match              Match               @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  outgoingStudent    User                @relation("TransferOutgoingStudent", fields: [outgoingStudentId], references: [id], onDelete: Restrict)
+  incomingStudent    User                @relation("TransferIncomingStudent", fields: [incomingStudentId], references: [id], onDelete: Restrict)
+  landlord           User?               @relation("TransferLandlord", fields: [landlordId], references: [id], onDelete: SetNull)
+  signatureEnvelope  SignatureEnvelope?
+  escrowTransactions EscrowTransaction[]
+  reviews            Review[]
 
   @@index([status])
   @@index([landlordDecisionStatus])
@@ -384,105 +428,199 @@ model SignatureEnvelope {
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
-  transfer              LeaseTransfer           @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  signedLeaseDocument    LeaseDocument?         @relation(fields: [signedLeaseDocumentId], references: [id], onDelete: SetNull)
+  transfer            LeaseTransfer  @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  signedLeaseDocument LeaseDocument? @relation(fields: [signedLeaseDocumentId], references: [id], onDelete: SetNull)
 }
 
 model EscrowTransaction {
-  id                         String            @id @default(cuid())
-  transferId                 String?
-  furnitureItemId            String
-  sellerId                   String
-  buyerId                    String
-  status                     TransactionStatus @default(PENDING_PAYMENT)
-  amountCents                Int
-  paymentProvider            String
-  providerPaymentIntentId    String?           @unique
-  providerTransferId         String?           @unique
-  holdPlacedAt               DateTime?
-  releaseEligibleAt          DateTime?
-  releasedAt                 DateTime?
-  disputedAt                 DateTime?
-  createdAt                  DateTime          @default(now())
-  updatedAt                  DateTime          @updatedAt
+  id                      String            @id @default(cuid())
+  transferId              String?
+  furnitureItemId         String
+  sellerId                String
+  buyerId                 String
+  status                  TransactionStatus @default(PENDING_PAYMENT)
+  amountCents             Int
+  paymentProvider         String
+  providerPaymentIntentId String?           @unique
+  providerTransferId      String?           @unique
+  holdPlacedAt            DateTime?
+  releaseEligibleAt       DateTime?
+  releasedAt              DateTime?
+  disputedAt              DateTime?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
-  transfer                   LeaseTransfer?    @relation(fields: [transferId], references: [id], onDelete: SetNull)
-  furnitureItem              FurnitureItem     @relation(fields: [furnitureItemId], references: [id], onDelete: Restrict)
-  seller                     User              @relation("FurnitureSeller", fields: [sellerId], references: [id], onDelete: Restrict)
-  buyer                      User              @relation("FurnitureBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
-  dispute                    DisputeTicket?
+  transfer      LeaseTransfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  furnitureItem FurnitureItem  @relation(fields: [furnitureItemId], references: [id], onDelete: Restrict)
+  seller        User           @relation("FurnitureSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  buyer         User           @relation("FurnitureBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  dispute       DisputeTicket?
 
   @@index([status])
   @@index([releaseEligibleAt])
 }
 
 model DisputeTicket {
-  id                     String         @id @default(cuid())
-  escrowTransactionId    String         @unique
-  reportedById           String
-  assignedAdminId        String?
-  status                 DisputeStatus  @default(OPEN)
-  reason                 String         @db.VarChar(500)
-  resolutionNotes        String?
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
-  resolvedAt             DateTime?
+  id                  String        @id @default(cuid())
+  escrowTransactionId String        @unique
+  reportedById        String
+  assignedAdminId     String?
+  status              DisputeStatus @default(OPEN)
+  reason              String        @db.VarChar(500)
+  resolutionNotes     String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  resolvedAt          DateTime?
 
-  escrowTransaction      EscrowTransaction @relation(fields: [escrowTransactionId], references: [id], onDelete: Cascade)
-  reportedBy            User              @relation("DisputeReporter", fields: [reportedById], references: [id], onDelete: Restrict)
-  assignedAdmin         User?             @relation("DisputeAdmin", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  escrowTransaction EscrowTransaction @relation(fields: [escrowTransactionId], references: [id], onDelete: Cascade)
+  reportedBy        User              @relation("DisputeReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+  assignedAdmin     User?             @relation("DisputeAdmin", fields: [assignedAdminId], references: [id], onDelete: SetNull)
 }
 
 model TourSlot {
-  id                     String         @id @default(cuid())
-  listingId              String
-  hostId                 String
-  googleCalendarEventId  String?
-  startsAt               DateTime
-  endsAt                 DateTime
-  status                 TourSlotStatus @default(AVAILABLE)
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
+  id                    String         @id @default(cuid())
+  listingId             String
+  hostId                String
+  googleCalendarEventId String?
+  startsAt              DateTime
+  endsAt                DateTime
+  status                TourSlotStatus @default(AVAILABLE)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
-  listing                Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  host                   User           @relation("TourSlotHost", fields: [hostId], references: [id], onDelete: Cascade)
-  booking                TourBooking?
+  listing Listing      @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  host    User         @relation("TourSlotHost", fields: [hostId], references: [id], onDelete: Cascade)
+  booking TourBooking?
 
   @@index([listingId, startsAt])
 }
 
 model TourBooking {
-  id                     String    @id @default(cuid())
-  slotId                 String    @unique
-  hostId                 String
-  seekerId               String
-  googleCalendarEventId  String?   @unique
-  googleMeetUrl          String?
-  notes                  String?   @db.VarChar(500)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                    String   @id @default(cuid())
+  slotId                String   @unique
+  hostId                String
+  seekerId              String
+  googleCalendarEventId String?  @unique
+  googleMeetUrl         String?
+  notes                 String?  @db.VarChar(500)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  slot                   TourSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  host                   User      @relation("TourBookingHost", fields: [hostId], references: [id], onDelete: Cascade)
-  seeker                 User      @relation("TourBookingSeeker", fields: [seekerId], references: [id], onDelete: Cascade)
+  slot   TourSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  host   User     @relation("TourBookingHost", fields: [hostId], references: [id], onDelete: Cascade)
+  seeker User     @relation("TourBookingSeeker", fields: [seekerId], references: [id], onDelete: Cascade)
 }
 
 model Review {
-  id                  String                 @id @default(cuid())
-  authorId            String
-  subjectId           String
-  transferId          String?
-  type                ReviewType
-  rating              Int
-  body                String                 @db.VarChar(1000)
-  moderationStatus    ReviewModerationStatus @default(CLEAN)
-  moderationReason    String?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id               String                 @id @default(cuid())
+  authorId         String
+  subjectId        String
+  transferId       String?
+  type             ReviewType
+  rating           Int
+  body             String                 @db.VarChar(1000)
+  moderationStatus ReviewModerationStatus @default(CLEAN)
+  moderationReason String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
-  author              User                   @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  subject             User                   @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
-  transfer            LeaseTransfer?         @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  author   User           @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subject  User           @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  transfer LeaseTransfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
 
   @@index([subjectId, createdAt])
+}
+
+model Market {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  universityName     String
+  emailDomains       String[]
+  city               String
+  stateRegion        String
+  campusLatitude     Decimal  @db.Decimal(9, 6)
+  campusLongitude    Decimal  @db.Decimal(9, 6)
+  marketAvgRentCents Int
+  neighborhoods      Json
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users       User[]
+  listings    Listing[]
+  preferences PreferenceProfile[]
+  events      Event[]
+}
+
+model PreferenceProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  marketId            String
+  budgetMinCents      Int
+  budgetMaxCents      Int
+  preferredArea       String
+  areaLatitude        Decimal   @db.Decimal(9, 6)
+  areaLongitude       Decimal   @db.Decimal(9, 6)
+  commuteRadiusMiles  Decimal   @db.Decimal(5, 2)
+  moveInDate          DateTime
+  leaseDurationMonths Int
+  roomType            RoomType?
+  wantsFurnished      Boolean   @default(false)
+  lifestyleTags       String[]
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  market  Market  @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  matches Match[]
+}
+
+model ScamCheck {
+  id              String        @id @default(cuid())
+  listingId       String
+  heuristicFlags  String[]
+  claudeRiskScore Int?
+  claudeFlags     String[]
+  claudeReasoning String?
+  claudeError     String?
+  threshold       Int
+  decision        ScamDecision
+  reviewOutcome   ReviewOutcome @default(PENDING)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  inputs          Json
+  createdAt       DateTime      @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, createdAt])
+  @@index([decision, reviewOutcome])
+}
+
+model EmailLoginToken {
+  id         String    @id @default(cuid())
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+}
+
+model Event {
+  id              String   @id @default(cuid())
+  userId          String?
+  marketId        String?
+  eventType       String
+  eventProperties Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  market Market? @relation(fields: [marketId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([marketId, eventType])
+  @@index([userId, eventType])
 }
