@@ -179,8 +179,9 @@ function scoreLifestyle(listing: FitListing, pref: FitPreference): Omit<FitDimen
 
   return {
     score,
-    value: `${shared} of ${wanted.size} matched`,
-    detail: `lifestyle tags ${shared} of ${wanted.size} matched`
+    // Jaccard counts every tag on either side, so say "of <union>" to match the score.
+    value: `${shared} of ${union} tags shared`,
+    detail: `${shared} of ${union} lifestyle tags shared`
   };
 }
 

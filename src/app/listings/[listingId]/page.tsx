@@ -21,7 +21,7 @@ export default async function ListingPage({
   const user = await requireUser();
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
-    include: { market: true, furnitureItems: true, owner: { select: { universityName: true } } }
+    include: { market: true, furnitureItems: true }
   });
 
   if (!listing) notFound();
@@ -81,7 +81,7 @@ export default async function ListingPage({
 
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="sky">{listing.owner.universityName ?? listing.market.universityName}</Badge>
+            <Badge tone="sky">{listing.market.universityName}</Badge>
             {isOwner || isAdmin(user) ? <ListingStateBadge state={listing.state} /> : null}
           </div>
           <h1 className="text-heading-lg">{listing.title}</h1>

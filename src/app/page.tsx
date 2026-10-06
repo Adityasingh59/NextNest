@@ -55,7 +55,7 @@ export default async function LandingPage() {
               { key: "location", label: "Location", weight: 25, score: 100, points: 25, value: "0.8 mi", detail: "" },
               { key: "dates", label: "Dates", weight: 20, score: 80, points: 16, value: "4 mo overlap", detail: "" },
               { key: "roomType", label: "Room type", weight: 10, score: 50, points: 5, value: "No preference", detail: "" },
-              { key: "lifestyle", label: "Lifestyle", weight: 10, score: 33, points: 3.3, value: "1 of 2 matched", detail: "" },
+              { key: "lifestyle", label: "Lifestyle", weight: 10, score: 33, points: 3.3, value: "1 of 3 tags shared", detail: "" },
               { key: "furniture", label: "Furniture", weight: 5, score: 100, points: 5, value: "Included", detail: "" }
             ]}
           />

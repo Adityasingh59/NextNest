@@ -85,6 +85,8 @@ describe("computeFitScore", () => {
     const result = computeFitScore(listing({ lifestyleTags: ["quiet", "social"] }), preference({ lifestyleTags: ["Quiet", "pet-friendly"] }));
     // intersection {quiet} / union {quiet, social, pet-friendly}
     expect(dim(result, "lifestyle").score).toBe(33);
+    // The label uses the same denominator as the score.
+    expect(dim(result, "lifestyle").value).toBe("1 of 3 tags shared");
   });
 
   it("gives furniture 100 only when furnished and wanted", () => {
